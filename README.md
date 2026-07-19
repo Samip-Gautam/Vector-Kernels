@@ -89,10 +89,10 @@ It is not production ready. There's no auth, no rate limiting, no real input val
 
 ## What's next
 
-- Add proper request validation and error responses
-- Benchmark scalar math against SIMD math at different vector sizes
-- Add basic auth before leaving the tunnel open long term
-- Add more operations, maybe matrix multiplication next
+- Proper request validation and error responses
+- Benchmark of scalar math against SIMD math at different vector sizes
+- Basic auth before leaving the tunnel open long term
+- More operations, for example matrix multiplication
 
 ## License
 MIT licensed. Do whatever you want with it.
