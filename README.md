@@ -1,75 +1,60 @@
 # Vector-Kernels
 
-**A SIMD-accelerated compute kernel exposed as a raw HTTP service — no web framework, no ORM, no magic.**
+A small Java project that exposes SIMD-accelerated math over HTTP. No Spring, no frameworks doing the heavy lifting. Just the JDK standard library and the Vector API.
 
-Vector-Kernels is a small systems project built to answer one question honestly: *what actually happens between a JSON request landing on a socket and a CPU executing a vectorized instruction?* Every layer here — HTTP parsing, request dispatch, and the math itself — is written against the JDK standard library and the incubating Vector API, with nothing hidden behind a framework.
+## Why I built this
 
----
+I wanted to actually understand what happens between a request hitting a socket and a CPU running a vectorized instruction, instead of trusting a framework to handle it for me. So I skipped Spring Boot and wrote the HTTP layer by hand using `com.sun.net.httpserver`, and used Java's Vector API (`jdk.incubator.vector`) to do the math directly on CPU registers instead of relying on the JIT compiler to maybe auto-vectorize a loop.
 
-## Why this exists
+The idea started when I connected two things I'd learned separately. One was the OSI model from my networking class, which had always felt like a diagram I memorized for exams. The other was that I'd just finished a concurrency project and wanted to try something with the Vector API next. I figured the best way to actually understand the OSI layers was to build them, not just draw them. So this project is a raw TCP based HTTP server sitting on top of a SIMD compute engine.
 
-Most "build an API" tutorials start and end at Spring Boot or Express — you get routing, serialization, and business logic, but the actual wire protocol and the machine underneath stay invisible. This project deliberately strips that away. The goal wasn't to ship something production-ready; it was to build every layer by hand once, so the abstractions frameworks normally hide stop being a black box.
+## What it does
 
-Two ideas collided to produce this:
+You send a JSON request describing a vector operation. The server parses it, hands it to the right kernel, and the kernel does the actual math using SIMD lanes instead of a normal scalar loop.
 
-1. **The OSI model, made physical.** Instead of treating the transport and application layers as diagram boxes from a networking course, this project implements them — a raw socket server (`com.sun.net.httpserver`) parsing HTTP by hand, sitting directly on top of TCP.
-2. **The Java Vector API.** Rather than trusting the JIT to auto-vectorize a loop and hoping for the best, `jdk.incubator.vector` lets you *explicitly* pack data into SIMD lanes and issue vector instructions — the same category of hardware acceleration BLAS and NumPy lean on, just written by hand in Java.
+Operations it supports right now:
 
-## What it actually does
+- Addition, subtraction, multiplication, division (elementwise)
+- Dot product
+- ReLU, threshold, clamp
 
-At its core, the service accepts a JSON payload describing a vector operation over HTTP, dispatches it to a SIMD kernel, and returns the result — with the entire numeric computation happening in CPU vector registers rather than a scalar loop.
+I picked these on purpose. Dot product shows up everywhere in linear algebra and embeddings. ReLU, threshold, and clamp are the exact elementwise operations that show up constantly in neural network inference. So this is a tiny version of the same kind of kernel work that libraries like BLAS or SimSIMD do at a much bigger scale.
 
-**Supported operations:**
+## How it's structured
 
-| Category | Operations |
-|---|---|
-| Elementwise arithmetic | addition, subtraction, multiplication, division |
-| Linear algebra | dot product |
-| ML primitives | ReLU, threshold, clamp |
+There are three layers and they don't know about each other.
 
-These aren't arbitrary — dot product is the core operation behind matrix multiplication and embedding similarity, and ReLU/threshold/clamp are exactly the elementwise ops that dominate neural network inference. This is, in miniature, the same kind of kernel work that libraries like BLAS or SimSIMD do at scale.
+1. HTTP layer. Reads the request, writes the response. Doesn't know anything about vector math.
+2. Dispatcher. Looks at the operation name in the request and routes it to the right kernel function.
+3. SIMD kernel layer. Takes the numbers, packs them into vector lanes, runs the actual vectorized instructions, and returns the result.
 
-## Architecture
+Keeping these separate was the whole point. It meant I could learn and rebuild each piece on its own instead of dealing with one tangled file.
 
 ```
- Client (curl / browser / app)
-        │  HTTP + JSON
-        ▼
- ┌─────────────────────────┐
- │   HTTP Layer              │  com.sun.net.httpserver — raw request/response
- │   (no Spring, no Netty)   │  handling, manual routing
- └────────────┬─────────────┘
-              │ parsed operation + operands
-              ▼
- ┌─────────────────────────┐
- │   Dispatcher               │  maps operation name → kernel implementation
- └────────────┬─────────────┘
-              │
-              ▼
- ┌─────────────────────────┐
- │   SIMD Kernel Layer        │  jdk.incubator.vector
- │   (Vectors/SIMDKernel)     │  packs data into vector lanes, executes
- └────────────┬─────────────┘   vectorized instructions on CPU registers
-              │
-              ▼
-      JSON response
+client sends HTTP request with JSON
+        |
+HTTP layer parses it (no framework, just the JDK)
+        |
+dispatcher picks the right kernel by operation name
+        |
+SIMD kernel layer runs the vectorized math
+        |
+JSON response goes back to the client
 ```
 
-The three layers are kept deliberately separate: the HTTP layer knows nothing about vector math, and the kernel layer knows nothing about HTTP. That separation is what let each piece be understood — and rebuilt from scratch, if needed — independently.
+## Why SIMD actually matters here
 
-## Why SIMD, and why it matters here
+A regular loop processes one number per instruction. SIMD lets one instruction work on several numbers at once, packed side by side in a CPU register. So if you're computing a dot product over 1024 numbers the normal way, that's 1024 multiply and add steps. With SIMD lanes of width 8, it's closer to 128. Same math, far fewer instructions.
 
-A normal loop processes one number per CPU instruction. SIMD (Single Instruction, Multiple Data) lets a single instruction operate on a whole *lane* of numbers at once — 4, 8, or more `float`s packed side by side in a register, processed in one cycle instead of several. The Java Vector API exposes this directly instead of hoping the JIT compiler auto-vectorizes your scalar code, which it often won't for anything beyond trivial loops.
-
-Concretely: computing a dot product of two 1024-element vectors the naive way is 1024 multiply-and-accumulate instructions. With SIMD lanes of width 8, it's ~128 — the CPU does 8x the arithmetic per instruction it issues.
+The Vector API in Java lets you do this explicitly instead of hoping the compiler figures it out for you, which it usually doesn't for anything beyond trivial loops.
 
 ## Tech stack
 
-- **Java 21** — LTS release with `jdk.incubator.vector` available
-- **Java Vector API** (`jdk.incubator.vector`) — explicit SIMD vectorization
-- **`com.sun.net.httpserver`** — HTTP server from the JDK standard library, no external web framework
-- **Maven** — build and dependency management
-- **Cloudflare Tunnel** — exposes the local server publicly through a custom domain without opening ports or managing TLS certificates directly
+- Java 21
+- Java Vector API (`jdk.incubator.vector`), still incubating as of this JDK version
+- `com.sun.net.httpserver` for the HTTP layer
+- Maven for building
+- Cloudflare Tunnel to expose it publicly through my own domain without opening ports myself
 
 ## Running it locally
 
@@ -80,7 +65,7 @@ mvn clean package
 java --add-modules jdk.incubator.vector -jar target/vector-kernels.jar
 ```
 
-> The `--add-modules jdk.incubator.vector` flag is required — the Vector API is still incubating in Java 21 and isn't exposed by default.
+You need the `--add-modules jdk.incubator.vector` flag. The Vector API isn't exposed by default on Java 21 since it's still incubating.
 
 ### Example request
 
@@ -90,12 +75,25 @@ curl -X POST http://localhost:8080/vector/dot \
   -d '{"a": [1.0, 2.0, 3.0, 4.0], "b": [5.0, 6.0, 7.0, 8.0]}'
 ```
 
-## Exposing it publicly
+Double check this route and payload shape against your actual dispatcher code before pushing. I filled this in as an example, not a verified endpoint, so make sure it actually runs before anyone tries it.
 
-The service binds locally and is tunneled out via [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), which routes traffic from a real domain to the local port without exposing the machine's IP or manually configuring a reverse proxy and certificates.
+## Making it public
 
-## What this project is / isn't
+The server just runs locally on a port. I used Cloudflare Tunnel to route a real domain to that port without exposing my machine's IP or setting up a reverse proxy and certificates myself.
 
-**Is:** a from-scratch exploration of how HTTP, TCP, and SIMD vectorization actually work underneath the frameworks that normally abstract them away.
+## What this is and isn't
 
-**Isn't:** a production-hardened API. There's no auth, no rate limiting, no input validation hardening, and no load testing — those are natural next steps, not oversights being hidden.
+This is a learning project built to understand HTTP, TCP, and SIMD vectorization from the ground up, not to hide behind frameworks that normally do this for you.
+
+It is not production ready. There's no auth, no rate limiting, no real input validation, and no load testing yet. Those aren't things I forgot. They're just not done.
+
+## What's next
+
+- Add proper request validation and error responses
+- Benchmark scalar math against SIMD math at different vector sizes
+- Add basic auth before leaving the tunnel open long term
+- Add more operations, maybe matrix multiplication next
+
+## License
+
+Not added yet. If you want people to be able to use or fork this, MIT is a simple default for a project like this.
