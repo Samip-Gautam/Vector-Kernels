@@ -95,5 +95,4 @@ It is not production ready. There's no auth, no rate limiting, no real input val
 - Add more operations, maybe matrix multiplication next
 
 ## License
-
-Not added yet. If you want people to be able to use or fork this, MIT is a simple default for a project like this.
+MIT licensed. Do whatever you want with it.
