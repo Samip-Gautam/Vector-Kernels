@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Main" type="Application" factoryName="Application">
     <option name="MAIN_CLASS_NAME" value="Vectors.SIMDKernel.Main" />
-    <module name="SIMD-Kernel" />
+    <module name="SIMDKernel" />
     <option name="VM_PARAMETERS" value="--add-modules jdk.incubator.vector" />
     <method v="2">
       <option name="Make" enabled="true" />

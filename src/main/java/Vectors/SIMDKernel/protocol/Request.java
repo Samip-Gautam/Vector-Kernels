@@ -3,7 +3,7 @@ package Vectors.SIMDKernel.protocol;
 public class Request {
 
     private Operation operation;
-    private int arrayLength;
+//    private int arrayLength;
     private int[] arrayOne;
     private int[] arrayTwo;
     private int threshold;
@@ -12,9 +12,9 @@ public class Request {
 
     public Request() {}
 
-    public Request(Operation operation, int arrayLength) {
+    public Request(Operation operation) {
         this.operation = operation;
-        this.arrayLength = arrayLength;
+//        this.arrayLength = arrayLength;
     }
 
     public Operation getOperation() {
@@ -24,8 +24,8 @@ public class Request {
         this.operation = operation;
     }
 
-    public int getArrayLength() { return arrayLength; }
-    public void setArrayLength(int arrayLength) { this.arrayLength = arrayLength; }
+//    public int getArrayLength() { return arrayLength; }
+//    public void setArrayLength(int arrayLength) { this.arrayLength = arrayLength; }
 
     public int[] getArrayOne() { return arrayOne; }
     public void setArrayOne(int[] arrayOne) { this.arrayOne = arrayOne; }
